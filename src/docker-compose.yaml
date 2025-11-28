@@ -1,110 +1,268 @@
-x-common: &common
-  restart: always
-
-x-hdfs-common: &hdfs-common
-  <<: *common
-  platform: linux/amd64
-  environment:
-    - CORE_CONF_fs_defaultFS=hdfs://hdfs-namenode:9000
-    - CLUSTER_NAME=my-hadoop-cluster
-    - HDFS_NAMENODE_FORMAT=true
-    - HADOOP_CONF_dfs_namenode_rpc_bind_host=0.0.0.0
-    - HADOOP_CONF_dfs_namenode_http_bind_host=0.0.0.0
-    - HADOOP_CONF_mapreduce_framework_name=local
-    - HDFS_KMS_ENABLED=false
-    - JAVA_OPTS=-Dhadoop.security.logger=INFO,console
-  networks:
-    - hdfs-net
-
-x-spark-common: &spark-common
-  <<: *common
-  platform: linux/amd64
-  environment:
-    - CORE_CONF_fs_defaultFS=hdfs://hdfs-namenode:9000
-  networks:
-    - spark-net
-    - hdfs-net
-
 services:
-  hdfs-namenode:
-    <<: *hdfs-common
-    image: apache/hadoop:3.3.6
-    container_name: hdfs-namenode
+  # --- HDFS: NAMENODE ---
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    platform: linux/amd64  # Wymuszenie emulacji dla Mac M1/M2
+    container_name: namenode
+    restart: always
     ports:
-      - "9870:9870"
-      - "9000:9000"
+      - 9870:9870 # Web UI HDFS
+      - 9000:9000 # Port IPC (dla Sparka/HBase)
     volumes:
-      - hadoop-namenode-data:/hadoop/dfs/name
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 9000"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      - namenode_data:/hadoop/dfs/name
+    env_file:
+      - ./hadoop.env
+    environment:
+      - CLUSTER_NAME=test
+    networks:
+      - spark-net
 
-  hdfs-datanode:
-    <<: *hdfs-common
-    image: apache/hadoop:3.3.6
-    container_name: hdfs-datanode
-    ports:
-      - "9864:9864"
+  # --- HDFS: DATANODE ---
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    platform: linux/amd64
+    container_name: datanode
+    restart: always
     volumes:
-      - hadoop-datanode-data:/hadoop/dfs/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9864/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 60s
+      - datanode_data:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    environment:
+      - SERVICE_PRECONDITION=namenode:9000
+    networks:
+      - spark-net
+
+  # --- ZOOKEEPER ---
+  zookeeper:
+    image: zookeeper:3.5
+    platform: linux/amd64
+    container_name: zookeeper
+    restart: always
+    ports:
+      - 2181:2181
+    networks:
+      - spark-net
+
+  # --- HBASE: MASTER ---
+  hbase-master:
+    image: bde2020/hbase-master:1.0.0-hbase1.2.6
+    platform: linux/amd64
+    container_name: hbase-master
+    restart: always
     depends_on:
-      hdfs-namenode:
-        condition: service_healthy
+      - namenode
+      - datanode
+      - zookeeper
+    env_file:
+      - ./hadoop.env
+    ports:
+      - 16010:16010 # Web UI HBase
+    networks:
+      - spark-net
 
+  # --- HBASE: REGIONSERVER ---
+  hbase-regionserver:
+    image: bde2020/hbase-regionserver:1.0.0-hbase1.2.6
+    platform: linux/amd64
+    container_name: hbase-regionserver
+    restart: always
+    depends_on:
+      - hbase-master
+    env_file:
+      - ./hadoop.env
+    environment:
+      - HBASE_CONF_hbase_regionserver_hostname=hbase-regionserver
+    networks:
+      - spark-net
+# --- SPARK SERVICES ---
   spark-master:
-    <<: *spark-common
-    image: apache/spark:4.0.0-scala2.13-java17-ubuntu
+    image: bde2020/spark-master:3.0.0-hadoop3.2
+    platform: linux/amd64
     container_name: spark-master
-    depends_on:
-      - hdfs-namenode
-      - hdfs-datanode
-    environment:
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8080
     ports:
-      - "8080:8080"
-      - "7077:7077"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
+      - 8080:8080 # Web UI Spark Master
+      - 7077:7077 # Port komunikacyjny dla workerów i driverów
+    environment:
+      - INIT_DAEMON_STEP=setup_spark
+    networks:
+      - spark-net
 
-  spark-worker:
-    <<: *spark-common
-    image: apache/spark:4.0.0-scala2.13-java17-ubuntu
-    container_name: spark-worker
+  spark-worker-1:
+    image: bde2020/spark-worker:3.0.0-hadoop3.2
+    platform: linux/amd64
+    container_name: spark-worker-1
     depends_on:
-      spark-master:
-        condition: service_healthy
-    environment:
-      - SPARK_MASTER_URL=spark://spark-master:7077
+      - spark-master
     ports:
-      - "8081:8081"
+      - 8081:8081 # Web UI Workera
+    environment:
+      - "SPARK_MASTER=spark://spark-master:7077"
+    networks:
+      - spark-net
+  
+  # --- KAFKA SERVICES ---
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    hostname: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092" # Port dla Hosta (Twojego Maca)
+    environment:
+      KAFKA_BROKER_ID: 1
+      # Podłączamy się do istniejącego Zookeepera
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      # Konfiguracja nasłuchiwania (Dwa kanały: wewnętrzny dla Dockera, zewnętrzny dla Maca)
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    networks:
+      - spark-net
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "9090:8080" # UI dostępne pod portem 9090
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka:29092"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zookeeper:2181"
+    networks:
+      - spark-net
+
+  kafka-topic-setup:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka-topic-setup
+    depends_on:
+      - kafka
+    volumes:
+      - ./setup/create-topics.sh:/tmp/create-topics.sh
+    command: "bash /tmp/create-topics.sh"
+    networks:
+      - spark-net
+  
+  # --- AIRFLOW: BAZA DANYCH ---
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"]
-      interval: 15s
-      timeout: 5s
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
       retries: 5
-      start_period: 30s
+    networks:
+      - spark-net
+
+  # --- AIRFLOW: SETUP ---
+  airflow-setup:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: airflow-setup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=true
+      - _AIRFLOW_DB_MIGRATE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=airflow
+      - _AIRFLOW_WWW_USER_PASSWORD=airflow
+      # --- FIX DLA ROOT'A: Wskazujemy gdzie jest airflow ---
+      - PATH=/home/airflow/.local/bin:/usr/local/bin:/usr/bin:/bin
+    user: "0:0" # Root, żeby naprawić uprawnienia folderów
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec airflow db migrate && airflow users create --username airflow --password airflow --firstname Peter --lastname Parker --role Admin --email spiderman@superhero.org
+    volumes:
+      - ./:/sources
+    networks:
+      - spark-net
+
+  # --- AIRFLOW: WEBSERVER ---
+  airflow-webserver:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: airflow-webserver
+    restart: always
+    depends_on:
+      airflow-setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=true
+    ports:
+      - "8090:8080" # Airflow UI pod portem 8090
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+    command: webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 5
+    networks:
+      - spark-net
+
+  # --- AIRFLOW: SCHEDULER ---
+  airflow-scheduler:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: airflow-scheduler
+    restart: always
+    depends_on:
+      airflow-setup:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=true
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+    command: scheduler
+    networks:
+      - spark-net
 
 volumes:
-  hadoop-namenode-data:
-  hadoop-datanode-data:
+  namenode_data:
+  datanode_data:
+  postgres-db-data:
 
 networks:
-  hdfs-net:
-    driver: bridge
   spark-net:
-    driver: bridge

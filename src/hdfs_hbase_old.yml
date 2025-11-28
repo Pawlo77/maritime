@@ -1,0 +1,110 @@
+x-common: &common
+  restart: always
+
+x-hdfs-common: &hdfs-common
+  <<: *common
+  platform: linux/amd64
+  environment:
+    - CORE_CONF_fs_defaultFS=hdfs://hdfs-namenode:9000
+    - CLUSTER_NAME=my-hadoop-cluster
+    - HDFS_NAMENODE_FORMAT=true
+    - HADOOP_CONF_dfs_namenode_rpc_bind_host=0.0.0.0
+    - HADOOP_CONF_dfs_namenode_http_bind_host=0.0.0.0
+    - HADOOP_CONF_mapreduce_framework_name=local
+    - HDFS_KMS_ENABLED=false
+    - JAVA_OPTS=-Dhadoop.security.logger=INFO,console
+  networks:
+    - hdfs-net
+
+x-spark-common: &spark-common
+  <<: *common
+  platform: linux/amd64
+  environment:
+    - CORE_CONF_fs_defaultFS=hdfs://hdfs-namenode:9000
+  networks:
+    - spark-net
+    - hdfs-net
+
+services:
+  hdfs-namenode:
+    <<: *hdfs-common
+    image: apache/hadoop:3.3.6
+    container_name: hdfs-namenode
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - hadoop-namenode-data:/hadoop/dfs/name
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 9000"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  hdfs-datanode:
+    <<: *hdfs-common
+    image: apache/hadoop:3.3.6
+    container_name: hdfs-datanode
+    ports:
+      - "9864:9864"
+    volumes:
+      - hadoop-datanode-data:/hadoop/dfs/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9864/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    depends_on:
+      hdfs-namenode:
+        condition: service_healthy
+
+  spark-master:
+    <<: *spark-common
+    image: apache/spark:4.0.0-scala2.13-java17-ubuntu
+    container_name: spark-master
+    depends_on:
+      - hdfs-namenode
+      - hdfs-datanode
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8080
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  spark-worker:
+    <<: *spark-common
+    image: apache/spark:4.0.0-scala2.13-java17-ubuntu
+    container_name: spark-worker
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    environment:
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    ports:
+      - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  hadoop-namenode-data:
+  hadoop-datanode-data:
+
+networks:
+  hdfs-net:
+    driver: bridge
+  spark-net:
+    driver: bridge
