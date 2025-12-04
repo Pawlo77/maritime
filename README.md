@@ -13,6 +13,7 @@ BBOX="[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]" # Eur
 # BBOX="[[[-90, -180], [90, 180]]]" # Global
 ```
 
+- `report`: Contains the project report in PDF format.
 - `src/airflow/`: Contains the Airflow DAGs and configurations for orchestrating data processing tasks.
 - `src/setup/`: Contains setup scripts and configuration files for the project environment.
 - `src/docker-compose.yaml`: Docker Compose file to set up the entire environment including Kafka, Airflow, and other necessary services.
