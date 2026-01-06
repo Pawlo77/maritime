@@ -102,12 +102,16 @@ def process_message(message) -> None:
 
     # Validate minimal structure
     if not isinstance(message_obj, dict) or not isinstance(meta_data, dict):
-        raise ValueError("Invalid message structure: expected Message and MetaData dicts")
+        raise ValueError(
+            "Invalid message structure: expected Message and MetaData dicts"
+        )
 
     # Resolve/construct row key
     message_id = message_obj.get("MessageID")
     if not message_id:
-        message_id = f"unknown-{hash(json.dumps(payload, sort_keys=True))}-{int(datetime.utcnow().timestamp()*1000)}"
+        message_id = f"unknown-{hash(json.dumps(payload, sort_keys=True))}"
+
+    message_id = str(message_id) + f"-{int(datetime.utcnow().timestamp()*1000)}"
 
     # Add derived fields
     meta_data["message_type"] = message_type
@@ -130,7 +134,13 @@ def process_message(message) -> None:
 
     table = get_hbase_table()
     try:
-        table.put(str(message_id).encode("utf-8"), data)
+        table.put(
+            row=str(message_id).encode("utf-8"),
+            data=data,
+            timestamp=int(datetime.utcnow().timestamp() * 1000),
+        )
+        print(f"Inserted message into HBase (id: {message_id})")
+        
     except Exception as e:
         raise RuntimeError(f"Failed to insert into HBase (id: {message_id}): {e}")
 
@@ -144,7 +154,7 @@ with DAG(
     },
     description="Consume messages from Kafka topic ais-stream",
     start_date=datetime(2025, 12, 1),
-    schedule="* * * * *",
+    # schedule="* * * * *",
     catchup=False,
     max_active_runs=1,
     doc_md=__doc__,

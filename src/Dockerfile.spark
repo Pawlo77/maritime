@@ -1,0 +1,20 @@
+FROM apache/spark:3.5.5-python3
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    checkinstall build-essential zlib1g-dev libncurses5-dev libgdbm-dev libnss3-dev \
+    libssl-dev libreadline-dev libffi-dev wget ca-certificates
+
+RUN wget https://www.python.org/ftp/python/3.10.13/Python-3.10.13.tgz && \
+    tar -xf Python-3.10.13.tgz && \
+    cd Python-3.10.13 && \
+    ./configure --enable-optimizations && \
+    make -j$(nproc) && \
+    make altinstall
+
+# Set as default
+RUN ln -sf /usr/local/bin/python3.10 /usr/bin/python3 && \
+    ln -sf /usr/local/bin/python3.10 /usr/bin/python
+
+USER spark
