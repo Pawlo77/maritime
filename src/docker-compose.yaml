@@ -138,9 +138,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 1024m
-    # volumes: 
-    #   - ./hbase-spark-1.0.0.jar:/opt/hbase-1.2.6/lib/hbase-spark-1.0.0.jar
-    #   - ./hbase-spark-1.0.1.jar:/opt/hbase-1.2.6/lib/hbase-spark-1.0.1.jar
   hbase-regionserver:
     <<: *common
     image: bde2020/hbase-regionserver:1.0.0-hbase1.2.6
@@ -163,9 +160,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 1024m
-    # volumes: 
-    #   - ./hbase-spark-1.0.0.jar:/opt/hbase-1.2.6/lib/hbase-spark-1.0.0.jar
-    #   - ./hbase-spark-1.0.1.jar:/opt/hbase-1.2.6/lib/hbase-spark-1.0.1.jar
   hbase-thrift:
     <<: *common
     image: bde2020/hbase-master:1.0.0-hbase1.2.6
@@ -250,10 +244,6 @@ services:
         limits:
           cpus: "1.0"
           memory: 2G
-    # volumes: 
-    #   - ./hbase-spark-1.0.0.jar:/opt/spark/jars/hbase-spark-1.0.0.jar
-    #   - ./hbase-spark-1.0.1.jar:/opt/spark/jars/hbase-spark-1.0.1.jar
-
   spark-worker-1:
     <<: *common
     image: custom-spark:3.5.5-py310
@@ -280,9 +270,6 @@ services:
         limits:
           cpus: "2"
           memory: 3G
-    # volumes: 
-    #   - ./hbase-spark-1.0.0.jar:/opt/spark/jars/hbase-spark-1.0.0.jar
-    #   - ./hbase-spark-1.0.1.jar:/opt/spark/jars/hbase-spark-1.0.1.jar
 
   # --- KAFKA SERVICES ---
   kafka:
