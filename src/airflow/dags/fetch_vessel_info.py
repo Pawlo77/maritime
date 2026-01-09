@@ -11,10 +11,8 @@ HBASE_HOST = "hbase-thrift"
 HBASE_PORT = 9040
 VESSEL_INFO_TABLE = "vessel_info"
 PORTS_INFO_TABLE = "ports_info"
-API_KEY_MARINESIA = os.getenv("API_KEY_MARINESIA", "jJYhrWahNmaGQqgEjiMAydefe")
-BBOX = os.getenv(
-    "BBOX", "[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]"
-)
+API_KEY_MARINESIA = ""
+BBOX = "[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]"
 
 _hb_connection = None  # type: ignore
 
