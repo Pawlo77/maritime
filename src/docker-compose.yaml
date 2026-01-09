@@ -268,8 +268,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 3G
+          cpus: "1.0"
+          memory: 2G
 
   # --- KAFKA SERVICES ---
   kafka:
