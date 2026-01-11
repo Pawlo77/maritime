@@ -75,6 +75,10 @@ WEATHER_FIELDS = [
     tags=["Open-Meteo API"],
 )
 def daily_weather_forecast_dag():
+    """
+    DAG to fetch daily weather forecast for ports stored in HBase 'ports_info' table. The weather data is fetched from the Open-Meteo Marine API and stored in the
+    'port_weather_forecast' HBase table with relevant metadata.
+    """
 
     def fetch_weather_for_port(lat: float, long: float) -> WeatherApiResponse:
         """Fetch hourly weather data for given port coordinates."""
@@ -101,6 +105,12 @@ def daily_weather_forecast_dag():
         config_kwargs=SPARK_CONF,
     )
     def fetch_weather_ports(spark: SparkSession) -> None:
+        """
+        Fetch weather forecast data for all ports and store in HBase.
+        Retrieves port information from HBase, fetches weather data from Open-Meteo API,
+        and writes results to port_weather_forecast table.
+        """
+
         ports_df = fetch_hbase_table(spark, PORTS_INFO_CATALOG)
 
         latest_timestamp = ports_df.agg({"timestamp": "max"}).collect()[0][0]

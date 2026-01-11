@@ -1,20 +1,15 @@
 from airflow.sdk import dag, task
-from airflow.sensors.time_delta import TimeDeltaSensor
 import datetime as dt
-import happybase
 import json
-import os
 import requests
 import time
+from utils import get_hbase_table, parse_bbox
 
-HBASE_HOST = "hbase-thrift"
-HBASE_PORT = 9040
-VESSEL_INFO_TABLE = "vessel_info"
 PORTS_INFO_TABLE = "ports_info"
 API_KEY_MARINESIA = ""
-BBOX = "[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]" # Europe BBOX
-
-_hb_connection = None  # type: ignore
+BBOX = (
+    "[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]"  # Europe BBOX
+)
 
 
 @dag(
@@ -26,29 +21,12 @@ _hb_connection = None  # type: ignore
     tags=["Marinesia API"],
 )
 def fetch_ports_info_dag():
+    """
+    DAG to fetch ports information from Marinesia API and store it in HBase. Ports are fetched
+    within a specified bounding box (BBOX). The data is stored in the 'ports_info' HBase table with
+    relevant metadata.
+    """
 
-    def get_hbase_table(table_name, families) -> happybase.Table:
-        """Get or create HBase table connection."""
-        global _hb_connection
-
-        if _hb_connection is None:
-            print("Getting HBase table connection...")
-            _hb_connection = happybase.Connection(host=HBASE_HOST, port=HBASE_PORT)
-            print("Connected to HBase at", HBASE_HOST, HBASE_PORT)
-
-        tables = [
-            t.decode() if isinstance(t, bytes) else t for t in _hb_connection.tables()
-        ]
-        print("Existing HBase tables:", tables)
-        if table_name not in tables:
-            _hb_connection.create_table(table_name, families)
-            print("Created table", table_name)
-        else:
-            print("Table already exists:", table_name)
-
-        hb_table = _hb_connection.table(table_name)
-        return hb_table
-    
     def parse_bbox(bbox_str):
         """Parse [[[min_long, max_long],[min_lat, max_lat]]]"""
         try:
@@ -58,9 +36,35 @@ def fetch_ports_info_dag():
         except Exception as e:
             raise ValueError(f"Failed to parse BBOX: {e}")
 
-    
     @task()
     def fetch_ports_info() -> None:
+        """
+        Fetch port information from Marinesia API within a bounding box and load into HBase.
+        This function retrieves port data from the Marinesia API for a specified geographic
+        bounding box (BBOX), handles the API response, and stores the port information in
+        an HBase table with metadata timestamps.
+        The function performs the following operations:
+        1. Parses the bounding box coordinates (min/max longitude and latitude)
+        2. Queries the Marinesia API for ports within the specified BBOX
+        3. Validates the API response for errors
+        4. Generates a current timestamp in milliseconds
+        5. Creates or accesses the HBase ports info table with appropriate column families
+        6. Stores each port record in HBase with a composite row key (port_id-timestamp)
+        7. Includes metadata timestamps for each record
+        The row key format is: {port_id}-{timestamp_ms}
+        The HBase columns are organized in two families:
+        - info: Contains all port data fields
+        - meta_data: Contains system metadata (timestamp)
+
+        RuntimeError: If the Marinesia API returns an error in the response.
+
+        Note:
+            Requires BBOX, API_KEY_MARINESIA, and PORTS_INFO_TABLE to be defined globally.
+            API_KEY_MARINESIA: Authentication key for Marinesia API
+            BBOX: Bounding box coordinates for geographic filtering
+            PORTS_INFO_TABLE: HBase table name for storing port information
+        """
+
         min_long, max_long, min_lat, max_lat = parse_bbox(BBOX)
 
         # Fetch ports info within the BBOX
@@ -86,7 +90,10 @@ def fetch_ports_info_dag():
         for port in ports_info:
             curr_time = int(time.time())
             rk = f"{port['port_id']}-{timestamp_ms}".encode("utf-8")
-            payload = {f"info:{k}".encode("utf-8"): str(v).encode("utf-8") for k, v in port.items()}
+            payload = {
+                f"info:{k}".encode("utf-8"): str(v).encode("utf-8")
+                for k, v in port.items()
+            }
             payload[b"meta_data:timestamp"] = str(curr_time).encode("utf-8")
             hbase_table.put(rk, payload)
 

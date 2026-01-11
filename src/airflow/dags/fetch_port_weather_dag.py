@@ -68,16 +68,21 @@ WEATHER_FIELDS = [
 
 
 @dag(
-    dag_id="hourly_weather_dag",
+    dag_id="current_weather_dag",
     # schedule="@hourly",
     schedule=None,
     start_date=dt.datetime(2025, 12, 1),
     catchup=False,
     tags=["Open-Meteo API"],
 )
-def hourly_weather_dag():
+def current_weather_dag():
+    """
+    DAG to fetch current weather for ports stored in HBase 'ports_info' table. The weather data is fetched from the Open-Meteo Marine API and stored in the
+    'port_weather' HBase table with relevant metadata.
+    """
+
     def fetch_weather_for_port(lat: float, long: float) -> WeatherApiResponse:
-        """Fetch hourly weather data for given port coordinates."""
+        """Fetch current weather data for given port coordinates."""
 
         cache_session = requests_cache.CachedSession(".cache", expire_after=600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -101,6 +106,12 @@ def hourly_weather_dag():
         config_kwargs=SPARK_CONF,
     )
     def fetch_weather_ports(spark: SparkSession) -> None:
+        """
+        Fetch current weather data for all ports and store in HBase.
+        Retrieves port information from HBase, fetches weather data from Open-Meteo API,
+        and writes results to port_weather table.
+        """
+
         ports_df = fetch_hbase_table(spark, PORTS_INFO_CATALOG)
 
         latest_timestamp = ports_df.agg({"timestamp": "max"}).collect()[0][0]
@@ -154,4 +165,4 @@ def hourly_weather_dag():
     fetch_weather_ports()
 
 
-hourly_weather_dag()
+current_weather_dag()
