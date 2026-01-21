@@ -85,7 +85,6 @@ def fetch_ports_info_dag():
         timestamp_ms = int(dt.datetime.fromisoformat(curr_time).timestamp() * 1000)
         print(f"Fetched rows: {len(ports_info)}.")
 
-        # Put data into HBase
         print("Loading data into HBase.")
         hbase_table = get_hbase_table(PORTS_INFO_TABLE, {"info": {}, "meta_data": {}})
 

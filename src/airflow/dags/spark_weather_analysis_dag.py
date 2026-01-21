@@ -175,7 +175,7 @@ def spark_weather_analysis_dag():
         print("\n=== Port-Level Weather Summary ===")
         port_analysis.filter(col("avg_wave_height").isNotNull()).show(10)
 
-        storm_threshold = 3.0  # 3 meters
+        storm_threshold = 3.0
         storms = (
             weather_df.filter(
                 (col("wave_height").isNotNull())

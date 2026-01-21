@@ -333,7 +333,6 @@ def spark_ports_vessels_analysis_dag():
             print("No position reports found")
             return
 
-        # Define UDF to parse Python dict string and extract fields
         def extract_sog(dict_str):
             try:
                 if not dict_str:
@@ -391,7 +390,6 @@ def spark_ports_vessels_analysis_dag():
         except Exception as e:
             print(f"Error showing sample: {e}")
 
-        # Extract fields from position_report
         ais_clean = position_df.select(
             "mmsi",
             "ship_name",
@@ -402,7 +400,6 @@ def spark_ports_vessels_analysis_dag():
             F.expr("extract_heading(position_report)").alias("heading"),
         )
 
-        # Filter for valid records
         ais_clean = ais_clean.filter(
             col("speed_over_ground").isNotNull()
             | col("course_over_ground").isNotNull()
@@ -411,7 +408,6 @@ def spark_ports_vessels_analysis_dag():
 
         print(f"\n=== Valid Movement Records: {ais_clean.count()} ===")
 
-        # 1. Speed statistics
         speed_stats = ais_clean.agg(
             spark_round(avg("speed_over_ground"), 2).alias("avg_speed_kts"),
             spark_round(max("speed_over_ground"), 2).alias("max_speed_kts"),
@@ -421,7 +417,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Speed Statistics (knots) ===")
         speed_stats.show()
 
-        # 2. Vessel speed patterns
         vessel_speed_patterns = (
             ais_clean.groupBy("mmsi")
             .agg(
@@ -436,8 +431,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Fastest Vessels (by Average Speed) ===")
         vessel_speed_patterns.show()
 
-        # 3. Active navigation zones (hotspots)
-        # Round coordinates to 1 decimal (roughly 11km grid)
         navigation_hotspots = (
             ais_clean.select(
                 spark_round(col("latitude"), 1).alias("lat_zone"),
@@ -456,7 +449,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Top Navigation Hotspots ===")
         navigation_hotspots.show()
 
-        # 4. Stationary vs moving vessels
         movement_status = (
             ais_clean.groupBy(
                 when(col("speed_over_ground") < 0.5, "Anchored/Stationary")
@@ -475,7 +467,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Vessel Movement Status Distribution ===")
         movement_status.show()
 
-        # Save results
         try:
             vessel_speed_patterns.write.mode("overwrite").parquet(
                 "hdfs://hdfs-namenode:9000/output/analysis/vessel_speed_patterns"
