@@ -59,4 +59,5 @@ async def connect_ais_stream():
 
 
 if __name__ == "__main__":
-    asyncio.run(connect_ais_stream())
+    # asyncio.run(connect_ais_stream())
+    pass

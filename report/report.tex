@@ -234,7 +234,69 @@ The chosen tools were selected to address the specific requirements of real-time
     \label{fig:architecture}
 \end{figure}
 
-\section{Example Analytical Use Cases}
+\section{Implementation}
+\subsection{AIS Stream API}
+Data from the AIS Stream API is ingested in real-time using a WebSocket connection. Before connecting, the system subscribes to a specified bounding box to receive position reports with entered API key and critical events for vessels within that area. The WebSocket client continuously listens for incoming messages, parsing each message to extract relevant fields such as MMSI, latitude, longitude, timestamp, heading, and ship name etc. 
+Special DAG in Apache Airflow is responsible for processing the incoming stream data. Each parsed message is then saved to specified HBase table on HDFS. 
+
+\subsection{Marinesia API}
+The Marinesia API is accessed via RESTful HTTP requests to retrieve vessel and port information. An Apache Airflow DAG is scheduled to run once daily at 00:00 UTC. The DAG consists of tasks to fetch vessel and port data based on predefined bounding boxes. The retrieved data is parsed and transformed into a structured format suitable for storage in HBase. The processed data is then inserted into designated HBase tables stored on HDFS for historical vessel and port information.
+
+\subsection{Open-Meteo API}
+The Open-Meteo API is accessed through RESTful HTTP requests to obtain weather and oceanographic data for saved ports accessed from HBase table stored on HDFS. An Apache Airflow DAG is scheduled to run hourly to fetch the latest weather forecasts, sea levels, tides, and meteorological data. The retrieved data is parsed and transformed into a structured format compatible with HBase storage on HDFS. The processed weather data is then inserted into designated HBase tables for environmental monitoring.
+Other DAG task is responsible for fetching current weather conditions around the ports and stored with the same way as forecast data.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{images/image copy 4.png}
+    \caption{HBase tables structure for storing ingested data from various sources.}
+    \label{fig:hbase_tables}
+\end{figure}
+
+\subsection{Analysis}
+Analytical tasks are implemented using Apache Spark, which processes data stored in HBase on HDFS. Spark jobs are scheduled via Apache Airflow to run at defined intervals. The examples of analysis includes:
+\begin{itemize}
+    \item \textbf{Storm Detection:} Identifying ports experiencing high wave heights and swell conditions based on predefined thresholds.
+    \item \textbf{Temperature Analysis:} Calculating average, minimum, maximum, and standard deviation of sea surface temperatures for each port.
+    \item \textbf{Ocean Current Analysis:} Evaluating average and maximum ocean current velocities, along with their variability.
+    \item \textbf{Wave Type Comparison:} Comparing wind-generated waves versus swell waves to understand dominant wave.
+    \item \textbf{Port Weather Summary:} Generating comprehensive weather summaries for each port, including temperature, wind speed, wave height, and tide levels.
+    \item \textbf{Fleet Composition Analysis:} Analyzing the distribution of vessel types (cargo, tanker, passenger, etc.) within the monitored area.
+    \item \textbf{Port Characteristics Analysis:} Examining port attributes such as berths, capacity, and geographic location to assess operational capabilities.
+    \item \textbf{Traffic Density Analysis:} Calculating vessel traffic density in specified areas.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{images/image.png}
+    \caption{Example Spark analysis result for weather data.}
+    \label{fig:weather_analysis}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{images/image copy.png}
+    \caption{Example Spark analysis result for fleet data.}
+    \label{fig:fleet_analysis}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.2\textwidth]{images/image copy 2.png}
+    \caption{Example Spark analysis result for port data.}
+    \label{fig:port_analysis}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{images/image copy 3.png}
+    \caption{Saved reports in HDFS after Spark analysis.}
+    \label{fig:hdfs_analysis}
+\end{figure}
+
+All reports are later saved back to HDFS for further use and visualization.
+
+\section{Future Work Examples of Analytical Use Cases}
 
 Using the combined data from the Open Meteo weather API, AISStream real - time vessel tracking, and the Marinersia vessel/port registry, a variety of valuable analyses can be performed:
 

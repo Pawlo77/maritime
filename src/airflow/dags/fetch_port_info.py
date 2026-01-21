@@ -6,7 +6,7 @@ import time
 from utils import get_hbase_table, parse_bbox
 
 PORTS_INFO_TABLE = "ports_info"
-API_KEY_MARINESIA = ""
+API_KEY_MARINESIA = "djwXVjNxiroXuGiQcPTIxKAZB"
 BBOX = (
     "[[[-25.9973998712, 25.3439083708], [44.6049090453, 71.2982931893]]]"  # Europe BBOX
 )
