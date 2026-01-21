@@ -27,15 +27,14 @@
 Env vars can override defaults: *TOPIC_NAME*, *MAX_MESSAGES*, *MAX_BATCH_SIZE*, *POLL_TIMEOUT*, *CONSUMER_GROUP*, *HBASE_HOST*, *HBASE_PORT*, *HBASE_TABLE*, *HBASE_CF*.
 """
 
-import os
 import json
-import happybase
+import os
 from datetime import datetime
 from typing import Any, Dict
 
+import happybase
 from airflow import DAG
 from airflow.providers.apache.kafka.operators.consume import ConsumeFromTopicOperator
-
 
 TOPIC_NAME: str = os.getenv("TOPIC_NAME", "ais-stream")
 HBASE_HOST: str = os.getenv("HBASE_HOST", "hbase-thrift")
@@ -111,7 +110,7 @@ def process_message(message) -> None:
     if not message_id:
         message_id = f"unknown-{hash(json.dumps(payload, sort_keys=True))}"
 
-    message_id = str(message_id) + f"-{int(datetime.utcnow().timestamp()*1000)}"
+    message_id = str(message_id) + f"-{int(datetime.utcnow().timestamp() * 1000)}"
 
     # Add derived fields
     meta_data["message_type"] = message_type
@@ -140,7 +139,7 @@ def process_message(message) -> None:
             timestamp=int(datetime.utcnow().timestamp() * 1000),
         )
         print(f"Inserted message into HBase (id: {message_id})")
-        
+
     except Exception as e:
         raise RuntimeError(f"Failed to insert into HBase (id: {message_id}): {e}")
 

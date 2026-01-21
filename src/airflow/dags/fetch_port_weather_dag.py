@@ -1,13 +1,15 @@
-from airflow.sdk import dag, task
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+"""Current Weather Fetch DAG."""
+
 import datetime as dt
+
 import openmeteo_requests
 import requests_cache
-from retry_requests import retry
+from airflow.sdk import dag, task
 from openmeteo_sdk.WeatherApiResponse import WeatherApiResponse
-from utils import get_hbase_table, fetch_hbase_table
-
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col
+from retry_requests import retry
+from utils import fetch_hbase_table, get_hbase_table
 
 PORTS_INFO_CATALOG = """{
     "table": {"namespace": "default", "name": "ports_info"},

@@ -1,9 +1,12 @@
-from airflow.sdk import dag, task
+"""Port Information Fetch DAG."""
+
 import datetime as dt
 import json
-import requests
 import time
-from utils import get_hbase_table, parse_bbox
+
+import requests
+from airflow.sdk import dag, task
+from utils import get_hbase_table
 
 PORTS_INFO_TABLE = "ports_info"
 API_KEY_MARINESIA = "djwXVjNxiroXuGiQcPTIxKAZB"

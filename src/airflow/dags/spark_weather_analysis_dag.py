@@ -1,10 +1,23 @@
+"""Spark Weather Analysis DAG."""
+
+import datetime as dt
+
 from airflow.sdk import dag, task
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, avg, max, min, count, desc, 
-    from_unixtime, window, stddev, round as spark_round
+    avg,
+    col,
+    count,
+    desc,
+    from_unixtime,
+    max,
+    min,
+    stddev,
+    window,
 )
-import datetime as dt
+from pyspark.sql.functions import (
+    round as spark_round,
+)
 from utils import fetch_hbase_table
 
 SPARK_CONF = {
@@ -96,77 +109,141 @@ def spark_weather_analysis_dag():
         except Exception as e:
             print(f"Error loading weather data: {e}")
             return
-        
+
         weather_df = weather_df.na.replace(["nan", "NaN", "Nan", "NAN", "None"], None)
         weather_df = weather_df.join(
             port_df.select("port_id", "port_name"), on="port_id", how="left"
         )
-        
+
         last_date = weather_df.agg(max(col("ref_time").cast("long"))).collect()[0][0]
         weather_df = weather_df.filter(col("ref_time") == last_date)
-        print(f"Data loaded from latest timestamp: {last_date}, count: {weather_df.count()}")
-        
+        print(
+            f"Data loaded from latest timestamp: {last_date}, count: {weather_df.count()}"
+        )
+
         # Count NULL/NaN values for each column
         print("\n=== NULL/NaN Count by Column ===")
         for column in weather_df.columns:
             null_count = weather_df.filter(col(column).isNull()).count()
             print(f"{column}: {null_count}")
-        
+
         # 1. Port-level aggregations with location data
-        port_analysis = weather_df.groupBy("port_id", "port_name", "latitude", "longitude").agg(
-            spark_round(avg(col("wave_height").cast("float")), 2).alias("avg_wave_height"),
-            spark_round(max(col("wave_height").cast("float")), 2).alias("max_wave_height"),
-            spark_round(avg(col("wave_period").cast("float")), 2).alias("avg_wave_period"),
-            spark_round(avg(col("wind_wave_height").cast("float")), 2).alias("avg_wind_wave_height"),
-            spark_round(avg(col("wind_wave_direction").cast("float")), 2).alias("avg_wind_direction"),
-            spark_round(avg(col("swell_wave_height").cast("float")), 2).alias("avg_swell_wave_height"),
-            spark_round(avg(col("swell_wave_period").cast("float")), 2).alias("avg_swell_period"),
-            spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias("avg_temperature"),
-            spark_round(min(col("sea_surface_temperature").cast("float")), 2).alias("min_temperature"),
-            spark_round(max(col("sea_surface_temperature").cast("float")), 2).alias("max_temperature"),
-            spark_round(avg(col("sea_level_height_msl").cast("float")), 2).alias("avg_sea_level"),
-            spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias("avg_current_velocity"),
-            spark_round(avg(col("ocean_current_direction").cast("float")), 2).alias("avg_current_direction"),
-            count("*").alias("forecast_records")
-        ).orderBy(desc("avg_wave_height"))
+        port_analysis = (
+            weather_df.groupBy("port_id", "port_name", "latitude", "longitude")
+            .agg(
+                spark_round(avg(col("wave_height").cast("float")), 2).alias(
+                    "avg_wave_height"
+                ),
+                spark_round(max(col("wave_height").cast("float")), 2).alias(
+                    "max_wave_height"
+                ),
+                spark_round(avg(col("wave_period").cast("float")), 2).alias(
+                    "avg_wave_period"
+                ),
+                spark_round(avg(col("wind_wave_height").cast("float")), 2).alias(
+                    "avg_wind_wave_height"
+                ),
+                spark_round(avg(col("wind_wave_direction").cast("float")), 2).alias(
+                    "avg_wind_direction"
+                ),
+                spark_round(avg(col("swell_wave_height").cast("float")), 2).alias(
+                    "avg_swell_wave_height"
+                ),
+                spark_round(avg(col("swell_wave_period").cast("float")), 2).alias(
+                    "avg_swell_period"
+                ),
+                spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "avg_temperature"
+                ),
+                spark_round(min(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "min_temperature"
+                ),
+                spark_round(max(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "max_temperature"
+                ),
+                spark_round(avg(col("sea_level_height_msl").cast("float")), 2).alias(
+                    "avg_sea_level"
+                ),
+                spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias(
+                    "avg_current_velocity"
+                ),
+                spark_round(avg(col("ocean_current_direction").cast("float")), 2).alias(
+                    "avg_current_direction"
+                ),
+                count("*").alias("forecast_records"),
+            )
+            .orderBy(desc("avg_wave_height"))
+        )
 
         print("\n=== Port-Level Weather Summary ===")
         port_analysis.filter(col("avg_wave_height").isNotNull()).show(10)
 
         # 2. Storm detection (high wave heights)
         storm_threshold = 3.0  # 3 meters
-        storms = weather_df.filter(
-            (col("wave_height").isNotNull()) &
-            (col("wave_height") > storm_threshold)
-        ).select(
-            "port_id",
-            "port_name",
-            spark_round(col("wave_height").cast("float"), 2).alias("wave_height"),
-            spark_round(col("swell_wave_height").cast("float"), 2).alias("swell_height"),
-            from_unixtime(col("forecast_timestamp").cast("long")).alias("forecast_time")
-        ).orderBy(desc("wave_height"))
+        storms = (
+            weather_df.filter(
+                (col("wave_height").isNotNull())
+                & (col("wave_height") > storm_threshold)
+            )
+            .select(
+                "port_id",
+                "port_name",
+                spark_round(col("wave_height").cast("float"), 2).alias("wave_height"),
+                spark_round(col("swell_wave_height").cast("float"), 2).alias(
+                    "swell_height"
+                ),
+                from_unixtime(col("forecast_timestamp").cast("long")).alias(
+                    "forecast_time"
+                ),
+            )
+            .orderBy(desc("wave_height"))
+        )
 
         print(f"\n=== Storm Detection (Wave Height > {storm_threshold}m) ===")
         storms.show(10)
 
         # 3. Temperature analysis
-        temp_analysis = weather_df.groupBy("port_id", "port_name").agg(
-            spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias("avg_temp"),
-            spark_round(stddev(col("sea_surface_temperature").cast("float")), 2).alias("temp_stddev"),
-            spark_round(min(col("sea_surface_temperature").cast("float")), 2).alias("min_temp"),
-            spark_round(max(col("sea_surface_temperature").cast("float")), 2).alias("max_temp"),
-        ).filter(col("avg_temp").isNotNull()).orderBy("avg_temp")
+        temp_analysis = (
+            weather_df.groupBy("port_id", "port_name")
+            .agg(
+                spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "avg_temp"
+                ),
+                spark_round(
+                    stddev(col("sea_surface_temperature").cast("float")), 2
+                ).alias("temp_stddev"),
+                spark_round(min(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "min_temp"
+                ),
+                spark_round(max(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "max_temp"
+                ),
+            )
+            .filter(col("avg_temp").isNotNull())
+            .orderBy("avg_temp")
+        )
 
         print("\n=== Sea Surface Temperature Analysis ===")
         temp_analysis.show(10)
 
         # 4. Ocean current analysis
-        current_analysis = weather_df.groupBy("port_id", "port_name").agg(
-            spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias("avg_current_velocity"),
-            spark_round(max(col("ocean_current_velocity").cast("float")), 2).alias("max_current_velocity"),
-            spark_round(stddev(col("ocean_current_velocity").cast("float")), 2).alias("current_stddev"),
-            count("*").alias("measurements")
-        ).filter(col("avg_current_velocity").isNotNull()).orderBy(desc("avg_current_velocity"))
+        current_analysis = (
+            weather_df.groupBy("port_id", "port_name")
+            .agg(
+                spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias(
+                    "avg_current_velocity"
+                ),
+                spark_round(max(col("ocean_current_velocity").cast("float")), 2).alias(
+                    "max_current_velocity"
+                ),
+                spark_round(
+                    stddev(col("ocean_current_velocity").cast("float")), 2
+                ).alias("current_stddev"),
+                count("*").alias("measurements"),
+            )
+            .filter(col("avg_current_velocity").isNotNull())
+            .orderBy(desc("avg_current_velocity"))
+        )
 
         print("\n=== Ocean Current Analysis ===")
         current_analysis.show(10)
@@ -223,30 +300,60 @@ def spark_weather_analysis_dag():
         weather_df = weather_df.na.replace(["nan", "NaN", "Nan", "NAN", "None"], None)
         last_date = weather_df.agg(max(col("ref_time").cast("long"))).collect()[0][0]
         weather_df = weather_df.filter(col("ref_time") == last_date)
-        print(f"Data loaded from latest timestamp: {last_date}, records now: {weather_df.count()}")
-        
+        print(
+            f"Data loaded from latest timestamp: {last_date}, records now: {weather_df.count()}"
+        )
+
         weather_df = weather_df.join(
-            port_df.select("port_id", "port_name"),
-            on="port_id",
-            how="left"
+            port_df.select("port_id", "port_name"), on="port_id", how="left"
         )
         # Define thresholds
         high_wave_threshold = 4.0  # meters
         high_current_threshold = 1.5  # m/s
         temp_extremes = (0, 35)  # Celsius
 
-        hazardous = weather_df.filter(
-            (
-            ((col("wave_height").cast("float") > high_wave_threshold) & (col("wave_height").isNotNull())) |
-            ((col("ocean_current_velocity").cast("float") > high_current_threshold) & (col("ocean_current_velocity").isNotNull())) |
-            ((col("sea_surface_temperature").cast("float") < temp_extremes[0]) & (col("sea_surface_temperature").isNotNull())) |
-            ((col("sea_surface_temperature").cast("float") > temp_extremes[1]) & (col("sea_surface_temperature").isNotNull()))
+        hazardous = (
+            weather_df.filter(
+                (
+                    (
+                        (col("wave_height").cast("float") > high_wave_threshold)
+                        & (col("wave_height").isNotNull())
+                    )
+                    | (
+                        (
+                            col("ocean_current_velocity").cast("float")
+                            > high_current_threshold
+                        )
+                        & (col("ocean_current_velocity").isNotNull())
+                    )
+                    | (
+                        (
+                            col("sea_surface_temperature").cast("float")
+                            < temp_extremes[0]
+                        )
+                        & (col("sea_surface_temperature").isNotNull())
+                    )
+                    | (
+                        (
+                            col("sea_surface_temperature").cast("float")
+                            > temp_extremes[1]
+                        )
+                        & (col("sea_surface_temperature").isNotNull())
+                    )
+                )
             )
-        ).groupBy("port_id", "port_name").agg(
-            count("*").alias("hazard_count"),
-            spark_round(max(col("wave_height").cast("float")), 2).alias("max_wave_height"),
-            spark_round(max(col("ocean_current_velocity").cast("float")), 2).alias("max_current_velocity"),
-        ).orderBy(desc("hazard_count"))
+            .groupBy("port_id", "port_name")
+            .agg(
+                count("*").alias("hazard_count"),
+                spark_round(max(col("wave_height").cast("float")), 2).alias(
+                    "max_wave_height"
+                ),
+                spark_round(max(col("ocean_current_velocity").cast("float")), 2).alias(
+                    "max_current_velocity"
+                ),
+            )
+            .orderBy(desc("hazard_count"))
+        )
 
         print("\n=== Hazardous Ports Summary ===")
         hazardous.show()
@@ -272,27 +379,49 @@ def spark_weather_analysis_dag():
         except Exception as e:
             print(f"Error loading data: {e}")
             return
-        
+
         weather_df = weather_df.na.replace(["nan", "NaN", "Nan", "NAN", "None"], None)
         ports_df = ports_df.na.replace(["nan", "NaN", "Nan", "NAN", "None"], None)
-        
+
         last_date = weather_df.agg(max(col("ref_time").cast("long"))).collect()[0][0]
         weather_df = weather_df.filter(col("ref_time") == last_date)
-        print(f"Data loaded from latest timestamp: {last_date}, records now: {weather_df.count()}")
+        print(
+            f"Data loaded from latest timestamp: {last_date}, records now: {weather_df.count()}"
+        )
 
         # Join with port info
-        regional_analysis = weather_df.join(
-            ports_df.select("port_id", "port_name", "country", "berths", "un_locode"),
-            on="port_id",
-            how="left"
-        ).groupBy("country").agg(
-            spark_round(avg(col("wave_height").cast("float")), 2).alias("avg_wave_height"),
-            spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias("avg_temperature"),
-            spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias("avg_current"),
-            count("*").alias("total_measurements")
-        ).orderBy(desc("avg_wave_height"))
-        
-        regional_analysis=regional_analysis.filter(col("country").isNotNull() & (col("avg_wave_height").isNotNull()| col("avg_temperature").isNotNull() | col("avg_current").isNotNull()))
+        regional_analysis = (
+            weather_df.join(
+                ports_df.select(
+                    "port_id", "port_name", "country", "berths", "un_locode"
+                ),
+                on="port_id",
+                how="left",
+            )
+            .groupBy("country")
+            .agg(
+                spark_round(avg(col("wave_height").cast("float")), 2).alias(
+                    "avg_wave_height"
+                ),
+                spark_round(avg(col("sea_surface_temperature").cast("float")), 2).alias(
+                    "avg_temperature"
+                ),
+                spark_round(avg(col("ocean_current_velocity").cast("float")), 2).alias(
+                    "avg_current"
+                ),
+                count("*").alias("total_measurements"),
+            )
+            .orderBy(desc("avg_wave_height"))
+        )
+
+        regional_analysis = regional_analysis.filter(
+            col("country").isNotNull()
+            & (
+                col("avg_wave_height").isNotNull()
+                | col("avg_temperature").isNotNull()
+                | col("avg_current").isNotNull()
+            )
+        )
 
         print("\n=== Regional Weather Comparison ===")
         regional_analysis.filter(col("avg_wave_height").isNotNull()).show()
@@ -306,6 +435,11 @@ def spark_weather_analysis_dag():
             print(f"Warning: Could not save results: {e}")
 
     # DAG workflow
-    analyze_weather_conditions() >> identify_hazardous_ports() >> compare_ports_weather()
+    (
+        analyze_weather_conditions()
+        >> identify_hazardous_ports()
+        >> compare_ports_weather()
+    )
+
 
 spark_weather_analysis_dag()

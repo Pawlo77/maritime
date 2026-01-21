@@ -1,8 +1,10 @@
+""" "Utility functions for HBase and Spark interactions."""
+
+import json
+
 import happybase
 import pyspark
 from pyspark.sql import SparkSession
-import json
-
 
 HBASE_HOST = "hbase-thrift"
 HBASE_PORT = 9040
@@ -41,11 +43,12 @@ def fetch_hbase_table(spark: SparkSession, catalog: str) -> pyspark.sql.DataFram
 
     return df
 
+
 def parse_bbox(bbox_str):
-        """Parse [[[min_long, max_long],[min_lat, max_lat]]]"""
-        try:
-            data = json.loads(bbox_str)
-            # data[0][0] is [min_long, max_long], data[0][1] is [min_lat, max_lat]
-            return data[0][0][0], data[0][0][1], data[0][1][0], data[0][1][1]
-        except Exception as e:
-            raise ValueError(f"Failed to parse BBOX: {e}")
+    """Parse [[[min_long, max_long],[min_lat, max_lat]]]"""
+    try:
+        data = json.loads(bbox_str)
+        # data[0][0] is [min_long, max_long], data[0][1] is [min_lat, max_lat]
+        return data[0][0][0], data[0][0][1], data[0][1][0], data[0][1][1]
+    except Exception as e:
+        raise ValueError(f"Failed to parse BBOX: {e}")

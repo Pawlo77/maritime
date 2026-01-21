@@ -1,14 +1,34 @@
+"""Spark Ports and Vessels Analysis DAG."""
+
+import ast
+import datetime as dt
+
 from airflow.sdk import dag, task
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col, avg, max, min, count, desc, 
-    when, coalesce, round as spark_round, unix_timestamp, max as spark_max,
-    year, month, dayofmonth, hour, count_distinct
-)
-import datetime as dt
-from utils import fetch_hbase_table
-import ast
 from pyspark.sql import functions as F
+from pyspark.sql.functions import (
+    avg,
+    coalesce,
+    col,
+    count,
+    count_distinct,
+    dayofmonth,
+    desc,
+    hour,
+    max,
+    min,
+    month,
+    unix_timestamp,
+    when,
+    year,
+)
+from pyspark.sql.functions import (
+    max as spark_max,
+)
+from pyspark.sql.functions import (
+    round as spark_round,
+)
+from utils import fetch_hbase_table
 
 SPARK_CONF = {
     "spark.master": "spark://spark-master:7077",
@@ -116,7 +136,7 @@ def spark_ports_vessels_analysis_dag():
         except Exception as e:
             print(f"Error loading ports data: {e}")
             return
-        
+
         ports_df = ports_df.na.replace("nan", None)
 
         # 1. Overall port statistics
@@ -127,15 +147,17 @@ def spark_ports_vessels_analysis_dag():
             "berths",
             "un_locode",
             col("latitude").cast("double").alias("latitude"),
-            col("longitude").cast("double").alias("longitude")
+            col("longitude").cast("double").alias("longitude"),
         ).dropDuplicates(["port_id"])
 
         print(f"\n=== Total Unique Ports: {port_stats.count()} ===")
 
         # 2. Ports by country
-        ports_by_country = port_stats.groupBy("country").agg(
-            count("port_id").alias("port_count")
-        ).orderBy(desc("port_count"))
+        ports_by_country = (
+            port_stats.groupBy("country")
+            .agg(count("port_id").alias("port_count"))
+            .orderBy(desc("port_count"))
+        )
 
         print("\n=== Ports Distribution by Country ===")
         ports_by_country.show(15)
@@ -146,14 +168,18 @@ def spark_ports_vessels_analysis_dag():
             when(col("latitude") > 60, "Northern Europe")
             .when(col("latitude") > 50, "Central Europe")
             .when(col("latitude") > 40, "Mediterranean")
-            .otherwise("Other")
+            .otherwise("Other"),
         )
 
-        regional_ports = ports_with_region.groupBy("region").agg(
-            count("port_id").alias("port_count"),
-            spark_round(avg("latitude"), 2).alias("avg_latitude"),
-            spark_round(avg("longitude"), 2).alias("avg_longitude")
-        ).orderBy(desc("port_count"))
+        regional_ports = (
+            ports_with_region.groupBy("region")
+            .agg(
+                count("port_id").alias("port_count"),
+                spark_round(avg("latitude"), 2).alias("avg_latitude"),
+                spark_round(avg("longitude"), 2).alias("avg_longitude"),
+            )
+            .orderBy(desc("port_count"))
+        )
 
         print("\n=== Regional Port Distribution ===")
         regional_ports.show()
@@ -190,7 +216,7 @@ def spark_ports_vessels_analysis_dag():
             return
 
         vessels_df = vessels_df.na.replace("nan", None)
-        
+
         # Get unique vessels
         unique_vessels = vessels_df.select(
             "mmsi",
@@ -202,59 +228,69 @@ def spark_ports_vessels_analysis_dag():
             col("draft").cast("double").alias("draft"),
             col("beam").cast("double").alias("beam"),
             "imo",
-            "status"
+            "status",
         ).dropDuplicates(["mmsi"])
 
         print(f"\n=== Total Unique Vessels: {unique_vessels.count()} ===")
 
         # 1. Vessels by type
-        vessels_by_type = unique_vessels.groupBy("ship_type").agg(
-            count("mmsi").alias("vessel_count")
-        ).orderBy(desc("vessel_count"))
+        vessels_by_type = (
+            unique_vessels.groupBy("ship_type")
+            .agg(count("mmsi").alias("vessel_count"))
+            .orderBy(desc("vessel_count"))
+        )
 
         print("\n=== Fleet Composition by Ship Type ===")
         vessels_by_type.show(20)
 
         # 2. Vessels by flag (nationality)
-        vessels_by_flag = unique_vessels.groupBy("flag").agg(
-            count("mmsi").alias("vessel_count")
-        ).orderBy(desc("vessel_count"))
+        vessels_by_flag = (
+            unique_vessels.groupBy("flag")
+            .agg(count("mmsi").alias("vessel_count"))
+            .orderBy(desc("vessel_count"))
+        )
 
         print("\n=== Vessels by Flag (Top 20) ===")
         vessels_by_flag.show(20)
 
         # 3. Vessel size analysis
-        size_analysis = unique_vessels.filter(
-            col("length").isNotNull() & 
-            col("beam").isNotNull()
-        ).select(
-            col("length").alias("length"),
-            col("beam").alias("beam"),
-            col("draft").alias("draft"),
-            "ship_type"
-        ).groupBy("ship_type").agg(
-            spark_round(avg("length"), 2).alias("avg_length"),
-            spark_round(max("length"), 2).alias("max_length"),
-            spark_round(avg("beam"), 2).alias("avg_beam"),
-            spark_round(avg("draft"), 2).alias("avg_draft"),
-            count("*").alias("vessel_count")
-        ).orderBy(desc("vessel_count"))
+        size_analysis = (
+            unique_vessels.filter(col("length").isNotNull() & col("beam").isNotNull())
+            .select(
+                col("length").alias("length"),
+                col("beam").alias("beam"),
+                col("draft").alias("draft"),
+                "ship_type",
+            )
+            .groupBy("ship_type")
+            .agg(
+                spark_round(avg("length"), 2).alias("avg_length"),
+                spark_round(max("length"), 2).alias("max_length"),
+                spark_round(avg("beam"), 2).alias("avg_beam"),
+                spark_round(avg("draft"), 2).alias("avg_draft"),
+                count("*").alias("vessel_count"),
+            )
+            .orderBy(desc("vessel_count"))
+        )
 
         print("\n=== Vessel Size by Type ===")
         size_analysis.show()
 
         # 4. Largest vessels
-        largest_vessels = unique_vessels.filter(
-            col("length").isNotNull()
-        ).select(
-            "ship_name",
-            "ship_type",
-            "flag",
-            "status",
-            "imo",
-            col("length").alias("length"),
-            col("beam").alias("beam")
-        ).orderBy(desc("length")).limit(10)
+        largest_vessels = (
+            unique_vessels.filter(col("length").isNotNull())
+            .select(
+                "ship_name",
+                "ship_type",
+                "flag",
+                "status",
+                "imo",
+                col("length").alias("length"),
+                col("beam").alias("beam"),
+            )
+            .orderBy(desc("length"))
+            .limit(10)
+        )
 
         print("\n=== Top 10 Largest Vessels ===")
         largest_vessels.show()
@@ -285,7 +321,7 @@ def spark_ports_vessels_analysis_dag():
         Analyze vessel movements: speed patterns, course distributions, activity hotspots.
         Extracts Sog (Speed Over Ground), Cog (Course Over Ground), TrueHeading from AIS PositionReport data.
         """
-        
+
         print("=== Starting Vessel Movements Analysis ===")
 
         try:
@@ -294,16 +330,16 @@ def spark_ports_vessels_analysis_dag():
         except Exception as e:
             print(f"Error loading AIS data: {e}")
             return
-        
+
         # Focus on recent data (last hour), commented due to limited test data.
         # max_timestamp = ais_df.agg(spark_max(unix_timestamp(col("time_utc")))).collect()[0][0]
         # one_hour_ago = max_timestamp - 3600
         # ais_df = ais_df.filter(unix_timestamp(col("time_utc")) >= one_hour_ago)
-        
+
         position_df = ais_df.filter(col("message_type") == "PositionReport").limit(500)
         position_count = position_df.count()
         print(f"Filtered to {position_count} PositionReport messages")
-        
+
         if position_count == 0:
             print("No position reports found")
             return
@@ -313,42 +349,56 @@ def spark_ports_vessels_analysis_dag():
             try:
                 if not dict_str:
                     return None
-                data = ast.literal_eval(dict_str) if isinstance(dict_str, str) else dict_str
-                sog = data.get('Sog', None)
+                data = (
+                    ast.literal_eval(dict_str)
+                    if isinstance(dict_str, str)
+                    else dict_str
+                )
+                sog = data.get("Sog", None)
                 return float(sog) if sog is not None else None
             except Exception as e:
                 print(f"Error parsing Sog: {e}")
                 return None
-        
+
         def extract_cog(dict_str):
             try:
                 if not dict_str:
                     return None
-                data = ast.literal_eval(dict_str) if isinstance(dict_str, str) else dict_str
-                cog = data.get('Cog', None)
+                data = (
+                    ast.literal_eval(dict_str)
+                    if isinstance(dict_str, str)
+                    else dict_str
+                )
+                cog = data.get("Cog", None)
                 return float(cog) if cog is not None else None
             except Exception as e:
                 print(f"Error parsing Cog: {e}")
                 return None
-        
+
         def extract_heading(dict_str):
             try:
                 if not dict_str:
                     return None
-                data = ast.literal_eval(dict_str) if isinstance(dict_str, str) else dict_str
-                heading = data.get('TrueHeading', None)
+                data = (
+                    ast.literal_eval(dict_str)
+                    if isinstance(dict_str, str)
+                    else dict_str
+                )
+                heading = data.get("TrueHeading", None)
                 return float(heading) if heading is not None else None
             except Exception as e:
                 print(f"Error parsing TrueHeading: {e}")
                 return None
-        
+
         spark.udf.register("extract_sog", extract_sog, "double")
         spark.udf.register("extract_cog", extract_cog, "double")
         spark.udf.register("extract_heading", extract_heading, "double")
 
         print("\n=== Sample Position Report Data ===")
         try:
-            position_df.select("mmsi", "ship_name", "latitude", "longitude", "position_report").coalesce(1).show(3, truncate=False)
+            position_df.select(
+                "mmsi", "ship_name", "latitude", "longitude", "position_report"
+            ).coalesce(1).show(3, truncate=False)
         except Exception as e:
             print(f"Error showing sample: {e}")
 
@@ -360,14 +410,14 @@ def spark_ports_vessels_analysis_dag():
             col("longitude").cast("double").alias("longitude"),
             F.expr("extract_sog(position_report)").alias("speed_over_ground"),
             F.expr("extract_cog(position_report)").alias("course_over_ground"),
-            F.expr("extract_heading(position_report)").alias("heading")
+            F.expr("extract_heading(position_report)").alias("heading"),
         )
-        
+
         # Filter for valid records
         ais_clean = ais_clean.filter(
-            col("speed_over_ground").isNotNull() | 
-            col("course_over_ground").isNotNull() | 
-            col("heading").isNotNull()
+            col("speed_over_ground").isNotNull()
+            | col("course_over_ground").isNotNull()
+            | col("heading").isNotNull()
         )
 
         print(f"\n=== Valid Movement Records: {ais_clean.count()} ===")
@@ -376,47 +426,62 @@ def spark_ports_vessels_analysis_dag():
         speed_stats = ais_clean.agg(
             spark_round(avg("speed_over_ground"), 2).alias("avg_speed_kts"),
             spark_round(max("speed_over_ground"), 2).alias("max_speed_kts"),
-            spark_round(min("speed_over_ground"), 2).alias("min_speed_kts")
+            spark_round(min("speed_over_ground"), 2).alias("min_speed_kts"),
         )
 
         print("\n=== Speed Statistics (knots) ===")
         speed_stats.show()
 
         # 2. Vessel speed patterns
-        vessel_speed_patterns = ais_clean.groupBy("mmsi").agg(
-            spark_round(avg("speed_over_ground"), 2).alias("avg_speed_kts"),
-            spark_round(max("speed_over_ground"), 2).alias("max_speed_kts"),
-            count("*").alias("position_reports")
-        ).orderBy(desc("avg_speed_kts")).limit(20)
+        vessel_speed_patterns = (
+            ais_clean.groupBy("mmsi")
+            .agg(
+                spark_round(avg("speed_over_ground"), 2).alias("avg_speed_kts"),
+                spark_round(max("speed_over_ground"), 2).alias("max_speed_kts"),
+                count("*").alias("position_reports"),
+            )
+            .orderBy(desc("avg_speed_kts"))
+            .limit(20)
+        )
 
         print("\n=== Fastest Vessels (by Average Speed) ===")
         vessel_speed_patterns.show()
 
         # 3. Active navigation zones (hotspots)
         # Round coordinates to 1 decimal (roughly 11km grid)
-        navigation_hotspots = ais_clean.select(
-            spark_round(col("latitude"), 1).alias("lat_zone"),
-            spark_round(col("longitude"), 1).alias("lon_zone"),
-            "speed_over_ground"
-        ).groupBy("lat_zone", "lon_zone").agg(
-            count("*").alias("vessel_count"),
-            spark_round(avg("speed_over_ground"), 2).alias("avg_speed")
-        ).orderBy(desc("vessel_count")).limit(20)
+        navigation_hotspots = (
+            ais_clean.select(
+                spark_round(col("latitude"), 1).alias("lat_zone"),
+                spark_round(col("longitude"), 1).alias("lon_zone"),
+                "speed_over_ground",
+            )
+            .groupBy("lat_zone", "lon_zone")
+            .agg(
+                count("*").alias("vessel_count"),
+                spark_round(avg("speed_over_ground"), 2).alias("avg_speed"),
+            )
+            .orderBy(desc("vessel_count"))
+            .limit(20)
+        )
 
         print("\n=== Top Navigation Hotspots ===")
         navigation_hotspots.show()
 
         # 4. Stationary vs moving vessels
-        movement_status = ais_clean.groupBy(
-            when(col("speed_over_ground") < 0.5, "Anchored/Stationary")
-            .when(col("speed_over_ground") < 5, "Slow Moving")
-            .when(col("speed_over_ground") < 15, "Normal Transit")
-            .otherwise("High Speed")
-            .alias("movement_class")
-        ).agg(
-            count("*").alias("position_reports"),
-            count_distinct("mmsi").alias("unique_vessels")
-        ).orderBy(desc("position_reports"))
+        movement_status = (
+            ais_clean.groupBy(
+                when(col("speed_over_ground") < 0.5, "Anchored/Stationary")
+                .when(col("speed_over_ground") < 5, "Slow Moving")
+                .when(col("speed_over_ground") < 15, "Normal Transit")
+                .otherwise("High Speed")
+                .alias("movement_class")
+            )
+            .agg(
+                count("*").alias("position_reports"),
+                count_distinct("mmsi").alias("unique_vessels"),
+            )
+            .orderBy(desc("position_reports"))
+        )
 
         print("\n=== Vessel Movement Status Distribution ===")
         movement_status.show()

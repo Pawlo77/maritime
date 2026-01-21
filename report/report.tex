@@ -12,6 +12,7 @@
 \usepackage{float}          % Positioning of tables
 \usepackage{url}            % URL support
 \usepackage{setspace}       % Line spacing
+\usepackage{hyperref}       % Hyperlinks in TOC
 
 \begin{document}
 
@@ -200,9 +201,9 @@ This section outlines the division of responsibilities among the project authors
 \toprule
 Author & Responsibilities \\
 \midrule
-Paweł Pozorski & Design and implementation of the data ingestion pipeline, integration of AIS Stream API, configuration of Kafka topics for real-time data, and ensuring reliable stream processing with fault tolerance. Integration of streaming sources into data warehouse. Setup of all containers. \\
+Paweł Pozorski & Design and implementation of the data ingestion pipeline, integration of AIS Stream API, configuration of Kafka topics for real-time data, and ensuring reliable stream processing with fault tolerance. Integration of streaming sources into data warehouse. Setup of most of the containers. \\
 Paweł Florek & Historical data management and integration, retrieval and processing of Marinesia API and Open Meteo API data using Apache Airflow, HBase schema design for long-term storage, and integration of batch sources into the data warehouse. \\
-Hubert Sobociński & Workflow orchestration and system monitoring, setup of Apache Airflow for scheduling and automating pipelines, data validation, design of dashboards and reports for stakeholders, and preliminary exploratory data analysis. \\
+Hubert Sobociński & Workflow orchestration and system monitoring, setup of Apache Airflow for scheduling and automating pipelines, data validation, design of reports in spark for stakeholders, and preliminary exploratory data analysis. \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -229,31 +230,74 @@ The chosen tools were selected to address the specific requirements of real-time
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{images/architecture.png}
+    \includegraphics[width=\textwidth]{images/graph_rotated.png}
     \caption{Architecture of the maritime data pipeline with Docker Compose, data ingestion, processing, and orchestration layers.}
     \label{fig:architecture}
 \end{figure}
 
 \section{Implementation}
+
+This section details the implementation of data ingestion, storage, and analysis processes. Table~\ref{tab:process_schedule} summarizes the key processes, their data sources, tools used, and scheduling, providing an overview of the system's operational workflow. Details are provided in Sections~\nameref{sec:ais_stream_implementation}, \nameref{sec:marinesia_implementation}, \nameref{sec:open_meteo_implementation}, and \nameref{sec:analysis_implementation}. Analysis is limited to spark views only, without dashboards - they are not part of the project.
+
+\begin{table}[H]
+\centering
+\caption{Schedule of Data Ingestion and Analysis Processes}
+\label{tab:process_schedule}
+
+\begin{tabularx}{\textwidth}{p{5cm} p{2.5cm} p{5cm} p{2cm}}
+\toprule
+\textbf{Process} & \textbf{Source / Method} & \textbf{Tool / DAG} & \textbf{Schedule} \\
+\midrule
+AIS Stream Data Ingestion & AIS Stream API (WebSocket) & Airflow DAG, HBase on HDFS & Real-time (continuous) \\
+\addlinespace
+Vessel and Port Data Fetching & Marinesia API (REST) & Airflow DAG, HBase on HDFS & Daily at 00:00 UTC \\
+\addlinespace
+Weather and Oceanographic Forecast & Open-Meteo API (REST) & Airflow DAG, HBase on HDFS & Hourly \\
+\addlinespace
+Current Weather Conditions & Open-Meteo API (REST) & Airflow DAG, HBase on HDFS & Hourly \\
+\addlinespace
+Storm Detection & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Temperature Analysis & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Ocean Current Analysis & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Wave Type Comparison & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Port Weather Summary & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Fleet Composition Analysis & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Port Characteristics Analysis & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\addlinespace
+Traffic Density Analysis & HBase (Spark) & Spark job, Airflow DAG & Scheduled intervals \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \subsection{AIS Stream API}
+\label{sec:ais_stream_implementation}
 Data from the AIS Stream API is ingested in real-time using a WebSocket connection. Before connecting, the system subscribes to a specified bounding box to receive position reports with entered API key and critical events for vessels within that area. The WebSocket client continuously listens for incoming messages, parsing each message to extract relevant fields such as MMSI, latitude, longitude, timestamp, heading, and ship name etc. 
 Special DAG in Apache Airflow is responsible for processing the incoming stream data. Each parsed message is then saved to specified HBase table on HDFS. 
 
 \subsection{Marinesia API}
+\label{sec:marinesia_implementation}
 The Marinesia API is accessed via RESTful HTTP requests to retrieve vessel and port information. An Apache Airflow DAG is scheduled to run once daily at 00:00 UTC. The DAG consists of tasks to fetch vessel and port data based on predefined bounding boxes. The retrieved data is parsed and transformed into a structured format suitable for storage in HBase. The processed data is then inserted into designated HBase tables stored on HDFS for historical vessel and port information.
 
 \subsection{Open-Meteo API}
+\label{sec:open_meteo_implementation}
 The Open-Meteo API is accessed through RESTful HTTP requests to obtain weather and oceanographic data for saved ports accessed from HBase table stored on HDFS. An Apache Airflow DAG is scheduled to run hourly to fetch the latest weather forecasts, sea levels, tides, and meteorological data. The retrieved data is parsed and transformed into a structured format compatible with HBase storage on HDFS. The processed weather data is then inserted into designated HBase tables for environmental monitoring.
 Other DAG task is responsible for fetching current weather conditions around the ports and stored with the same way as forecast data.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.5\textwidth]{images/image copy 4.png}
+    \includegraphics[width=0.3\textwidth]{images/image copy 4.png}
     \caption{HBase tables structure for storing ingested data from various sources.}
     \label{fig:hbase_tables}
 \end{figure}
 
 \subsection{Analysis}
+\label{sec:analysis_implementation}
 Analytical tasks are implemented using Apache Spark, which processes data stored in HBase on HDFS. Spark jobs are scheduled via Apache Airflow to run at defined intervals. The examples of analysis includes:
 \begin{itemize}
     \item \textbf{Storm Detection:} Identifying ports experiencing high wave heights and swell conditions based on predefined thresholds.

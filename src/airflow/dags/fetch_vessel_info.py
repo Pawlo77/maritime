@@ -1,7 +1,10 @@
-from airflow.sdk import dag, task
+"""Vessel Information Fetch DAG."""
+
 import datetime as dt
-import requests
 import time
+
+import requests
+from airflow.sdk import dag, task
 from utils import get_hbase_table, parse_bbox
 
 VESSEL_INFO_TABLE = "vessel_info"

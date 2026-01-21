@@ -1,4 +1,7 @@
+""" "Spark 4.0 Test DAG."""
+
 import datetime
+
 from airflow.sdk import dag, task
 from pyspark.sql import SparkSession
 
@@ -11,7 +14,6 @@ from pyspark.sql import SparkSession
     tags=["spark_4_0", "airflow_3"],
 )
 def spark_test_dag():
-
     # Updated configuration for Spark 4.0 compatibility
     # Note: 'airflow-worker' must be the service name in your docker-compose
     spark_conf = {
@@ -49,7 +51,8 @@ def spark_test_dag():
         data = [(1, "Alice"), (2, "Bob"), (3, "Cathy")]
         df = spark.createDataFrame(data, ["id", "name"])
         df.show()
-    
+
     test_spark_init() >> process_sample_data()
+
 
 spark_test_dag()
