@@ -14,14 +14,13 @@ from pyspark.sql import SparkSession
     tags=["spark_4_0", "airflow_3"],
 )
 def spark_test_dag():
-    # Updated configuration for Spark 4.0 compatibility
-    # Note: 'airflow-worker' must be the service name in your docker-compose
+    
     spark_conf = {
         "spark.master": "spark://spark-master:7077",
-        "spark.driver.host": "airflow-scheduler",  # Points to the Airflow container
-        "spark.driver.bindAddress": "0.0.0.0",  # Listens on all interfaces
-        "spark.driver.port": "10000",  # Fixed port for callback
-        "spark.blockManager.port": "10001",  # Fixed port for data transfer
+        "spark.driver.host": "airflow-scheduler",
+        "spark.driver.bindAddress": "0.0.0.0",
+        "spark.driver.port": "10000",
+        "spark.blockManager.port": "10001",
         "spark.executor.memory": "600m",
         "spark.driver.memory": "600m",
         "spark.executor.cores": "1",
@@ -34,7 +33,7 @@ def spark_test_dag():
     # }
 
     @task.pyspark(
-        conn_id="spark",  # Ensure this connection is set to spark://spark-master:7077
+        conn_id="spark",
         config_kwargs=spark_conf,
     )
     def test_spark_init(spark: SparkSession) -> None:

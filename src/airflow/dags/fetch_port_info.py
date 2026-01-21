@@ -70,7 +70,6 @@ def fetch_ports_info_dag():
 
         min_long, max_long, min_lat, max_lat = parse_bbox(BBOX)
 
-        # Fetch ports info within the BBOX
         print(f"Fetching ports info within the BBOX: {BBOX}.")
         url = (
             "https://api.marinesia.com/api/v1/port/nearby?"

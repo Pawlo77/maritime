@@ -31,16 +31,14 @@ SPARK_CONF = {
     "spark.pyspark.python": "python3",
     "spark.pyspark.driver.python": "python3",
     "spark.jars.packages": "org.apache.hbase.connectors.spark:hbase-spark:1.0.1",
-    # HBase/Zookeeper Connectivity
     "spark.hadoop.hbase.zookeeper.quorum": "zookeeper",
     "spark.hadoop.hbase.zookeeper.property.clientPort": "2181",
-    # Resource Allocation
     "spark.executor.memory": "1g",
     "spark.driver.memory": "1g",
     "spark.executor.cores": "1",
     "spark.worker.cleanup.enabled": "true",
-    "spark.worker.cleanup.interval": "1800",  # Clean every 30 mins
-    "spark.worker.cleanup.appDataTtl": "3600",  # Remove app data older than 1 hour
+    "spark.worker.cleanup.interval": "1800",
+    "spark.worker.cleanup.appDataTtl": "3600",
 }
 
 WEATHER_FIELDS = [

@@ -44,7 +44,6 @@ SPARK_CONF = {
     "spark.executor.cores": "2",
 }
 
-# HBase Catalogs
 PORTS_INFO_CATALOG = """{
     "table": {"namespace": "default", "name": "ports_info"},
     "rowkey": "id",
@@ -139,7 +138,6 @@ def spark_ports_vessels_analysis_dag():
 
         ports_df = ports_df.na.replace("nan", None)
 
-        # 1. Overall port statistics
         port_stats = ports_df.select(
             "port_id",
             "port_name",
@@ -152,7 +150,6 @@ def spark_ports_vessels_analysis_dag():
 
         print(f"\n=== Total Unique Ports: {port_stats.count()} ===")
 
-        # 2. Ports by country
         ports_by_country = (
             port_stats.groupBy("country")
             .agg(count("port_id").alias("port_count"))
@@ -162,7 +159,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Ports Distribution by Country ===")
         ports_by_country.show(15)
 
-        # 3. Geographic clustering - ports per region
         ports_with_region = port_stats.withColumn(
             "region",
             when(col("latitude") > 60, "Northern Europe")
@@ -184,7 +180,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Regional Port Distribution ===")
         regional_ports.show()
 
-        # Save results
         try:
             port_stats.write.mode("overwrite").parquet(
                 "hdfs://hdfs-namenode:9000/output/analysis/port_statistics"
@@ -217,7 +212,6 @@ def spark_ports_vessels_analysis_dag():
 
         vessels_df = vessels_df.na.replace("nan", None)
 
-        # Get unique vessels
         unique_vessels = vessels_df.select(
             "mmsi",
             "ship_name",
@@ -233,7 +227,6 @@ def spark_ports_vessels_analysis_dag():
 
         print(f"\n=== Total Unique Vessels: {unique_vessels.count()} ===")
 
-        # 1. Vessels by type
         vessels_by_type = (
             unique_vessels.groupBy("ship_type")
             .agg(count("mmsi").alias("vessel_count"))
@@ -243,7 +236,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Fleet Composition by Ship Type ===")
         vessels_by_type.show(20)
 
-        # 2. Vessels by flag (nationality)
         vessels_by_flag = (
             unique_vessels.groupBy("flag")
             .agg(count("mmsi").alias("vessel_count"))
@@ -253,7 +245,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Vessels by Flag (Top 20) ===")
         vessels_by_flag.show(20)
 
-        # 3. Vessel size analysis
         size_analysis = (
             unique_vessels.filter(col("length").isNotNull() & col("beam").isNotNull())
             .select(
@@ -276,7 +267,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Vessel Size by Type ===")
         size_analysis.show()
 
-        # 4. Largest vessels
         largest_vessels = (
             unique_vessels.filter(col("length").isNotNull())
             .select(
@@ -295,7 +285,6 @@ def spark_ports_vessels_analysis_dag():
         print("\n=== Top 10 Largest Vessels ===")
         largest_vessels.show()
 
-        # Save results
         try:
             unique_vessels.write.mode("overwrite").parquet(
                 "hdfs://hdfs-namenode:9000/output/analysis/vessel_fleet"

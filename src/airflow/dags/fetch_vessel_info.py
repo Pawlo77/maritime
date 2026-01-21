@@ -57,7 +57,6 @@ def fetch_vessel_info_dag():
         """
 
         min_long, max_long, min_lat, max_lat = parse_bbox(BBOX)
-        # Fetch vessel info within the BBOX
         print(f"Fetching vessel info within the BBOX: {BBOX}.")
         url = (
             "https://api.marinesia.com//api/v1/vessel/nearby?"
@@ -74,7 +73,6 @@ def fetch_vessel_info_dag():
         timestamp_ms = int(dt.datetime.fromisoformat(curr_time).timestamp() * 1000)
         print(f"Fetched rows: {len(vessel_info)}.")
 
-        # Put data into HBase
         print("Loading data into HBase.")
         hbase_table = get_hbase_table(VESSEL_INFO_TABLE, {"info": {}, "meta_data": {}})
 

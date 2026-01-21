@@ -102,7 +102,6 @@ def spark_weather_analysis_dag():
         """
         print("=== Starting Weather Analysis ===")
 
-        # Load weather data
         try:
             weather_df = fetch_hbase_table(spark, WEATHER_FORECAST_CATALOG)
             port_df = fetch_hbase_table(spark, PORT_INFO_CATALOG)
@@ -121,13 +120,11 @@ def spark_weather_analysis_dag():
             f"Data loaded from latest timestamp: {last_date}, count: {weather_df.count()}"
         )
 
-        # Count NULL/NaN values for each column
         print("\n=== NULL/NaN Count by Column ===")
         for column in weather_df.columns:
             null_count = weather_df.filter(col(column).isNull()).count()
             print(f"{column}: {null_count}")
 
-        # 1. Port-level aggregations with location data
         port_analysis = (
             weather_df.groupBy("port_id", "port_name", "latitude", "longitude")
             .agg(
@@ -178,7 +175,6 @@ def spark_weather_analysis_dag():
         print("\n=== Port-Level Weather Summary ===")
         port_analysis.filter(col("avg_wave_height").isNotNull()).show(10)
 
-        # 2. Storm detection (high wave heights)
         storm_threshold = 3.0  # 3 meters
         storms = (
             weather_df.filter(
@@ -202,7 +198,6 @@ def spark_weather_analysis_dag():
         print(f"\n=== Storm Detection (Wave Height > {storm_threshold}m) ===")
         storms.show(10)
 
-        # 3. Temperature analysis
         temp_analysis = (
             weather_df.groupBy("port_id", "port_name")
             .agg(
@@ -226,7 +221,6 @@ def spark_weather_analysis_dag():
         print("\n=== Sea Surface Temperature Analysis ===")
         temp_analysis.show(10)
 
-        # 4. Ocean current analysis
         current_analysis = (
             weather_df.groupBy("port_id", "port_name")
             .agg(
@@ -248,7 +242,6 @@ def spark_weather_analysis_dag():
         print("\n=== Ocean Current Analysis ===")
         current_analysis.show(10)
 
-        # 5. Wave type comparison
         wave_comparison = weather_df.select(
             "port_id",
             "port_name",
@@ -260,7 +253,6 @@ def spark_weather_analysis_dag():
         print("\n=== Wave Type Comparison (Sample) ===")
         wave_comparison.show(5)
 
-        # Save results
         try:
             port_analysis.write.mode("overwrite").parquet(
                 "hdfs://hdfs-namenode:9000/output/analysis/weather_port_summary"
@@ -307,10 +299,9 @@ def spark_weather_analysis_dag():
         weather_df = weather_df.join(
             port_df.select("port_id", "port_name"), on="port_id", how="left"
         )
-        # Define thresholds
-        high_wave_threshold = 4.0  # meters
-        high_current_threshold = 1.5  # m/s
-        temp_extremes = (0, 35)  # Celsius
+        high_wave_threshold = 4.0
+        high_current_threshold = 1.5
+        temp_extremes = (0, 35)
 
         hazardous = (
             weather_df.filter(
@@ -389,7 +380,6 @@ def spark_weather_analysis_dag():
             f"Data loaded from latest timestamp: {last_date}, records now: {weather_df.count()}"
         )
 
-        # Join with port info
         regional_analysis = (
             weather_df.join(
                 ports_df.select(
@@ -434,7 +424,6 @@ def spark_weather_analysis_dag():
         except Exception as e:
             print(f"Warning: Could not save results: {e}")
 
-    # DAG workflow
     (
         analyze_weather_conditions()
         >> identify_hazardous_ports()
